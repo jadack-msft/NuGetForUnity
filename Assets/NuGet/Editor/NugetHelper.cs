@@ -13,6 +13,7 @@
     using System.Text.RegularExpressions;
     using UnityEditor;
     using UnityEngine;
+    using UnityEngine.Networking;
     using Debug = UnityEngine.Debug;
 
     /// <summary>
@@ -1615,7 +1616,9 @@
                 fromCache = true;
             }
 
-            WWW request = new WWW(url);
+            UnityWebRequest request = UnityWebRequest.Get(url);
+            request.SendWebRequest();
+            
             while (!request.isDone)
             {
                 if (stopwatch.ElapsedMilliseconds >= 750)
@@ -1636,7 +1639,9 @@
             {
                 if (string.IsNullOrEmpty(request.error))
                 {
-                    result = request.textureNonReadable;
+                    result = new Texture2D(32, 32);
+                    ImageConversion.LoadImage(result, request.downloadHandler.data);
+                    
                     LogVerbose("Downloading image {0} took {1} ms", url, stopwatch.ElapsedMilliseconds);
                 }
                 else
@@ -1648,7 +1653,7 @@
 
             if (result != null && !fromCache)
             {
-                CacheTextureOnDisk(url, request.bytes);
+                CacheTextureOnDisk(url, request.downloadHandler.data);
             }
 
             request.Dispose();

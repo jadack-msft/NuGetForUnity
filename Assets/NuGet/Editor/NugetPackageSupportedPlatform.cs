@@ -1,15 +1,12 @@
 ﻿namespace NugetForUnity
 {
-    using System;
     using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.IO;
-    using System.Linq;
-    using System.Net;
-    using System.Xml;
-    using System.Xml.Linq;
-    using Debug = UnityEngine.Debug;
 
+    /// <summary>
+    /// Defines a supported Platform for NuGet packages
+    /// A platform is defined by a name (which should be tightly coupled to BuildTargetGroup)
+    /// and a list of supported library names defined as Regular Expressions
+    /// </summary>
     public class NugetPackageSupportedPlatform
     {
         public string Name { get; set; }
