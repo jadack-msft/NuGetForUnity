@@ -194,6 +194,84 @@
                 preferencesChangedThisFrame = true;
             }
 
+            {
+                EditorGUILayout.LabelField("Supported Platforms:");
+
+                foreach (var platform in NugetHelper.NugetConfigFile.SupportedPlatforms)
+                {
+                    EditorGUILayout.BeginVertical();
+                    {
+                        EditorGUILayout.BeginHorizontal();
+                        {
+                            EditorGUILayout.BeginVertical();
+                            {
+                                string name = EditorGUILayout.TextField(platform.Name);
+                                if (name != platform.Name)
+                                {
+                                    preferencesChangedThisFrame = true;
+                                    platform.Name = name;
+                                }
+
+                                EditorGUI.indentLevel++;
+
+                                for (int i = 0; i < platform.LibraryNames.Count; i++)
+                                {
+                                    string libName = platform.LibraryNames[i];
+
+                                    EditorGUILayout.BeginHorizontal();
+                                    {
+                                        name = EditorGUILayout.TextField(libName);
+                                        if (name != libName)
+                                        {
+                                            preferencesChangedThisFrame = true;
+                                            platform.LibraryNames[i] = name;
+                                        }
+
+                                        if (GUILayout.Button("Up") && i > 0)
+                                        {
+                                            // Swap values
+                                            platform.LibraryNames[i] = platform.LibraryNames[i - 1];
+                                            platform.LibraryNames[i - 1] = libName;
+                                        }
+
+                                        if (GUILayout.Button("Down") && i < (platform.LibraryNames.Count - 1))
+                                        {
+                                            platform.LibraryNames[i] = platform.LibraryNames[i + 1];
+                                            platform.LibraryNames[i + 1] = libName;
+                                        }
+
+                                        if (GUILayout.Button("Remove"))
+                                        {
+                                            platform.LibraryNames.RemoveAt(i);
+                                        }
+                                    }
+                                    EditorGUILayout.EndHorizontal();
+                                }
+
+                                EditorGUI.indentLevel--;
+
+                            }
+                            EditorGUILayout.EndVertical();
+
+                        }
+                        EditorGUILayout.EndHorizontal();
+                    }
+
+                    if (GUILayout.Button(string.Format("Add New Library")))
+                    {
+                        platform.LibraryNames.Add("New Library");
+                        preferencesChangedThisFrame = true;
+                    }
+                    EditorGUILayout.EndVertical();
+                }
+
+                if (GUILayout.Button(string.Format("Add New Platform")))
+                {
+                    NugetHelper.NugetConfigFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("New Platform"));
+                    preferencesChangedThisFrame = true;
+                }
+            }
+
             EditorGUILayout.EndScrollView();
 
             if (GUILayout.Button(string.Format("Reset To Default")))

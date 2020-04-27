@@ -25,6 +25,8 @@
         /// </summary>
         public NugetPackageSource ActivePackageSource { get; private set; }
 
+        public List<NugetPackageSupportedPlatform> SupportedPlatforms { get; private set; }
+
         /// <summary>
         /// Gets the local path where packages are to be installed.  It can be a full path or a relative path.
         /// </summary>
@@ -150,12 +152,36 @@
                 config.Add(addElement);
             }
 
+            XElement supportedPlatforms = new XElement("supportedPlatforms");
+
+            if (SupportedPlatforms != null)
+            {
+                // Add default supported platforms
+                XElement platform;
+
+                foreach(var supportedPlatform in SupportedPlatforms)
+                {
+                    platform = new XElement("platform");
+                    platform.Add(new XAttribute("name", supportedPlatform.Name));
+
+                    foreach (var library in supportedPlatform.LibraryNames)
+                    {
+                        addElement = new XElement("nugetLib");
+                        addElement.Add(new XAttribute("name", library));
+                        platform.Add(addElement);
+                    }
+
+                    supportedPlatforms.Add(platform);
+                }
+            }
+
             XElement configuration = new XElement("configuration");
             configuration.Add(packageSources);
             configuration.Add(disabledPackageSources);
             configuration.Add(packageSourceCredentials);
             configuration.Add(activePackageSource);
             configuration.Add(config);
+            configuration.Add(supportedPlatforms);
 
             configFile.Add(configuration);
 
@@ -304,6 +330,34 @@
                 }
             }
 
+            // read the supported platforms
+            XElement supportedPlatforms = file.Root.Element("supportedPlatforms");
+            if (supportedPlatforms != null)
+            {
+                configFile.SupportedPlatforms = new List<NugetPackageSupportedPlatform>();
+
+                var platforms = supportedPlatforms.Elements("platform");
+                foreach (var platform in platforms)
+                {
+                    string platformName = platform.Attribute("name").Value;
+
+                    List<string> nugetLibs = new List<string>();
+
+                    var libs = platform.Elements("nugetLib");
+                    foreach (var lib in libs)
+                    {
+                        string libName = lib.Attribute("name").Value;
+
+                        nugetLibs.Add(libName);
+                    }
+
+                    configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform(platformName, nugetLibs));
+                }
+            }
+
+            // Add any default values : this will help when adding new data to the config file that should be supported
+            PopulateDefaultValues(ref configFile);
+
             return configFile;
         }
 
@@ -314,29 +368,124 @@
         /// <returns>The loaded <see cref="NugetConfigFile"/> loaded off of the newly created default file.</returns>
         public static NugetConfigFile CreateDefaultFile(string filePath)
         {
-            const string contents =
-@"<?xml version=""1.0"" encoding=""utf-8""?>
-<configuration>
-    <packageSources>
-       <add key=""NuGet"" value=""http://www.nuget.org/api/v2/"" />
-    </packageSources>
-    <disabledPackageSources />
-    <activePackageSource>
-       <add key=""All"" value=""(Aggregate source)"" />
-    </activePackageSource>
-    <config>
-       <add key=""repositoryPath"" value=""./Packages"" />
-       <add key=""DefaultPushSource"" value=""http://www.nuget.org/api/v2/"" />
-    </config>
-</configuration>";
+            NugetConfigFile configFile = new NugetConfigFile();
 
-            File.WriteAllText(filePath, contents, new UTF8Encoding());
+            configFile.InstallFromCache = true;
+            configFile.ReadOnlyPackageFiles = true;
+
+            // Add the default values
+            PopulateDefaultValues(ref configFile);
+
+            configFile.Save(filePath);
 
             AssetDatabase.Refresh();
 
             NugetHelper.DisableWSAPExportSetting(filePath, false);
 
-            return Load(filePath);
+            return configFile;
+        }
+
+        private static void PopulateDefaultValues(ref NugetConfigFile configFile)
+        {
+            // Add default package sources
+            if (configFile.PackageSources == null)
+            {
+                configFile.PackageSources = new List<NugetPackageSource>();
+                configFile.PackageSources.Add(new NugetPackageSource("NuGet", "http://www.nuget.org/api/v2/"));
+            }
+
+            if (configFile.ActivePackageSource == null)
+            {
+                configFile.ActivePackageSource = new NugetPackageSource("All", "(Aggregate source)");
+            }
+
+            if(string.IsNullOrEmpty(configFile.savedRepositoryPath))
+            {
+                const string DefaultPath = "./Packages";
+
+                configFile.savedRepositoryPath = DefaultPath;
+
+                configFile.RepositoryPath = Environment.ExpandEnvironmentVariables(DefaultPath);
+                if (!Path.IsPathRooted(configFile.RepositoryPath))
+                {
+                    string repositoryPath = Path.Combine(UnityEngine.Application.dataPath, configFile.RepositoryPath);
+                    repositoryPath = Path.GetFullPath(repositoryPath);
+
+                    configFile.RepositoryPath = repositoryPath;
+                }
+            }
+
+            if (string.IsNullOrEmpty(configFile.DefaultPushSource))
+            {
+                configFile.DefaultPushSource = "http://www.nuget.org/api/v2/";
+            }
+
+            // Default supported platforms
+            if (configFile.SupportedPlatforms == null)
+            {
+                configFile.SupportedPlatforms = new List<NugetPackageSupportedPlatform>();
+
+                // Standalone
+                List<string> validStandaloneLibraries = GetBestStandaloneFrameworks();
+                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("Standalone", validStandaloneLibraries));
+
+                // WSA
+                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("WSA", new List<string>()
+                { "uap10.0" }
+                ));
+
+                // Android
+                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("Android", new List<string>()
+                { "android" }
+                ));
+
+                // iOS
+                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("iOS", new List<string>()
+                { "ios" }
+                ));
+            }
+        }
+
+        private static readonly string[] unityFrameworks = new string[] { "unity" };
+        private static readonly string[] netStandardFrameworks = new string[] {
+            "netstandard2.0", "netstandard1.6", "netstandard1.5", "netstandard1.4", "netstandard1.3", "netstandard1.2", "netstandard1.1", "netstandard1.0" };
+        private static readonly string[] net4Unity2018Frameworks = new string[] { "net471", "net47" };
+        private static readonly string[] net4Unity2017Frameworks = new string[] { "net462", "net461", "net46", "net452", "net451", "net45", "net403", "net40", "net4" };
+        private static readonly string[] net3Frameworks = new string[] { "net35-unity full v3.5", "net35-unity subset v3.5", "net35", "net20", "net11" };
+        private static List<string> GetBestStandaloneFrameworks()
+        {
+            int intDotNetVersion = (int)NugetHelper.DotNetVersion(BuildTargetGroup.Standalone); // c
+            //bool using46 = DotNetVersion == ApiCompatibilityLevel.NET_4_6; // NET_4_6 option was added in Unity 5.6
+            bool using46 = intDotNetVersion == 3; // NET_4_6 = 3 in Unity 5.6 and Unity 2017.1 - use the hard-coded int value to ensure it works in earlier versions of Unity
+            bool usingStandard2 = intDotNetVersion == 6; // using .net standard 2.0
+
+            var frameworkGroups = new List<string>(unityFrameworks);
+
+            if (usingStandard2)
+            {
+                frameworkGroups.AddRange(netStandardFrameworks);
+            }
+            else if (using46)
+            {
+                if (NugetHelper.UnityVersion.Current.Major >= 2018)
+                {
+                    frameworkGroups.AddRange(net4Unity2018Frameworks);
+                }
+
+                if (NugetHelper.UnityVersion.Current.Major >= 2017)
+                {
+                    frameworkGroups.AddRange(net4Unity2017Frameworks);
+                }
+
+                frameworkGroups.AddRange(net3Frameworks);
+                frameworkGroups.AddRange(netStandardFrameworks);
+            }
+            else
+            {
+                frameworkGroups.AddRange(net3Frameworks);
+            }
+
+            return frameworkGroups;
         }
     }
 }

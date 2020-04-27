@@ -2,6 +2,7 @@
 {
     using Ionic.Zip;
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
@@ -90,16 +91,13 @@
         /// <summary>
         /// The current .NET version being used (2.0 [actually 3.5], 4.6, etc).
         /// </summary>
-        private static ApiCompatibilityLevel DotNetVersion
+        public static ApiCompatibilityLevel DotNetVersion(BuildTargetGroup platform)
         {
-            get
-            {
 #if UNITY_5_6_OR_NEWER
-                return PlayerSettings.GetApiCompatibilityLevel(EditorUserBuildSettings.selectedBuildTargetGroup);
+            return PlayerSettings.GetApiCompatibilityLevel(platform);
 #else
-                return PlayerSettings.apiCompatibilityLevel;
+            return PlayerSettings.apiCompatibilityLevel;
 #endif
-            }
         }
 
         /// <summary>
@@ -394,24 +392,76 @@
                 var targetFrameworks = libDirectories
                     .Select(x => x.Name.ToLower());
 
-                string bestTargetFramework = TryGetBestTargetFrameworkForCurrentSettings(targetFrameworks);
-                if (bestTargetFramework != null)
+                foreach (var platform in NugetConfigFile.SupportedPlatforms)
                 {
-                    DirectoryInfo bestLibDirectory = libDirectories
-                        .First(x => x.Name.ToLower() == bestTargetFramework);
+                    string bestTargetFramework = TryGetBestFramework(targetFrameworks, platform);
+                    List<string> newDirectories = new List<string>();
 
-                    if (bestTargetFramework == "unity" ||
-                        bestTargetFramework == "net35-unity full v3.5" ||
-                        bestTargetFramework == "net35-unity subset v3.5")
+                    if (bestTargetFramework != null)
                     {
-                        selectedDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "unity"));
-                        selectedDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "net35-unity full v3.5"));
-                        selectedDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "net35-unity subset v3.5"));
+                        DirectoryInfo bestLibDirectory = libDirectories
+                            .First(x => x.Name.ToLower() == bestTargetFramework);
+
+                        if (bestTargetFramework == "unity" ||
+                            bestTargetFramework == "net35-unity full v3.5" ||
+                            bestTargetFramework == "net35-unity subset v3.5")
+                        {
+                            newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "unity"));
+                            newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "net35-unity full v3.5"));
+                            newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "net35-unity subset v3.5"));
+                        }
+                        else
+                        {
+                            newDirectories.Add(bestLibDirectory.FullName);
+                        }
                     }
-                    else
+
+
+                    foreach (var directory in newDirectories)
                     {
-                        selectedDirectories.Add(bestLibDirectory.FullName);
+                        // Flag any DLLs as being for this platform
+                        string[] dlls = Directory.GetFiles(directory, "*.dll", SearchOption.AllDirectories);
+
+                        foreach (string dll in dlls)
+                        {
+                            // Get the relative dll path for getting the AssetImporter
+                            DirectoryInfo rootFolder = Directory.GetParent(Application.dataPath);
+                            string dllPath = dll.Substring(rootFolder.FullName.Length + 1);
+
+                            LogVerbose($"Found dll at path {dllPath}");
+
+                            AssetDatabase.ImportAsset(dllPath, ImportAssetOptions.Default);
+                            var dllImporter = AssetImporter.GetAtPath(dllPath);
+
+                            if (dllImporter != null)
+                            {
+                                BuildTarget target = BuildTarget.NoTarget;
+
+                                BuildTargetGroup platformTarget = (BuildTargetGroup)Enum.Parse(typeof(BuildTargetGroup), platform.Name);
+
+                                switch (platformTarget)
+                                {
+                                    case BuildTargetGroup.WSA:
+                                        target = BuildTarget.WSAPlayer;
+                                        break;
+                                    case BuildTargetGroup.Android:
+                                        target = BuildTarget.Android;
+                                        break;
+                                    case BuildTargetGroup.iOS:
+                                        target = BuildTarget.iOS;
+                                        break;
+                                }
+
+                                if (target != BuildTarget.NoTarget)
+                                {
+                                    (dllImporter as PluginImporter).SetCompatibleWithAnyPlatform(false);
+                                    (dllImporter as PluginImporter).SetCompatibleWithPlatform(target, true);
+                                }
+                            }
+                        }
                     }
+
+                    selectedDirectories.AddRange(newDirectories);
                 }
 
                 foreach (string directory in selectedDirectories)
@@ -557,7 +607,7 @@
                 .FirstOrDefault(x => x.TargetFramework == bestTargetFramework) ?? new NugetFrameworkGroup();
         }
 
-        private struct UnityVersion : IComparable<UnityVersion>
+        public struct UnityVersion : IComparable<UnityVersion>
         {
             public int Major;
             public int Minor;
@@ -607,75 +657,53 @@
         }
 
         private struct PriorityFramework { public int Priority; public string Framework; }
-        private static readonly string[] unityFrameworks = new string[] { "unity" };
-        private static readonly string[] netStandardFrameworks = new string[] {
-            "netstandard2.0", "netstandard1.6", "netstandard1.5", "netstandard1.4", "netstandard1.3", "netstandard1.2", "netstandard1.1", "netstandard1.0" };
-        private static readonly string[] net4Unity2018Frameworks = new string[] { "net471", "net47" };
-        private static readonly string[] net4Unity2017Frameworks = new string[] { "net462", "net461", "net46", "net452", "net451", "net45", "net403", "net40", "net4" };
-        private static readonly string[] net3Frameworks = new string[] { "net35-unity full v3.5", "net35-unity subset v3.5", "net35", "net20", "net11" };
-        private static readonly string[] defaultFrameworks = new string[] { string.Empty };
+
 
         public static string TryGetBestTargetFrameworkForCurrentSettings(IEnumerable<string> targetFrameworks)
         {
-            int intDotNetVersion = (int)DotNetVersion; // c
-            //bool using46 = DotNetVersion == ApiCompatibilityLevel.NET_4_6; // NET_4_6 option was added in Unity 5.6
-            bool using46 = intDotNetVersion == 3; // NET_4_6 = 3 in Unity 5.6 and Unity 2017.1 - use the hard-coded int value to ensure it works in earlier versions of Unity
-            bool usingStandard2 = intDotNetVersion == 6; // using .net standard 2.0
+            return TryGetBestFramework(targetFrameworks, GetCurrentPlatformSupport());
+        }
 
-            var frameworkGroups = new List<string[]> { unityFrameworks };
+        public static NugetPackageSupportedPlatform GetCurrentPlatformSupport()
+        {
+            string currentPlatform = EditorUserBuildSettings.selectedBuildTargetGroup.ToString();
 
-            if (usingStandard2)
+            if (NugetConfigFile.SupportedPlatforms != null)
             {
-                frameworkGroups.Add(netStandardFrameworks);
-            }
-            else if (using46)
-            {
-                if(UnityVersion.Current.Major >= 2018)
-                {
-                    frameworkGroups.Add(net4Unity2018Frameworks);
-                }
-
-                if (UnityVersion.Current.Major >= 2017)
-                {
-                    frameworkGroups.Add(net4Unity2017Frameworks);
-                }
-
-                frameworkGroups.Add(net3Frameworks);
-                frameworkGroups.Add(netStandardFrameworks);
-            }
-            else
-            {
-                frameworkGroups.Add(net3Frameworks);
+                return NugetConfigFile.SupportedPlatforms.Where(platform => platform.Name == currentPlatform).FirstOrDefault();
             }
 
-            frameworkGroups.Add(defaultFrameworks);
+            return null;
+        }
 
-            Func<string, int> getTfmPriority = (string tfm) =>
+        public static string TryGetBestFramework(IEnumerable<string> targetFrameworks, NugetPackageSupportedPlatform platform)
+        {
+            if (platform == null)
             {
-                for (int i = 0; i < frameworkGroups.Count; ++i)
+                return string.Empty;
+            }
+
+            // Each platform has supported platforms defined by a RegEx
+            // Look for matches in the target framework options
+            string bestFramework = null;
+
+            foreach(string supportedLibrary in platform.LibraryNames)
+            {
+                var matches = targetFrameworks.Where(libFolder => Regex.Match(libFolder, supportedLibrary).Success);
+
+                if (matches.Count() > 0)
                 {
-                    int index = Array.IndexOf(frameworkGroups[i], tfm);
-                    if (index >= 0)
-                    {
-                        return i * 1000 + index;
-                    }
+                    // Grab the last entry in the list
+                    // The list that is passed in is grabbed from the directory structure, which is in alphabetical order
+                    // The last entry in the list will always be the highest possible version if we're looking for entries
+                    // that are [Name].*
+                    bestFramework = matches.Last();
+                    break;
                 }
+            }
 
-                return int.MaxValue;
-            };
-
-            // Select the highest .NET library available that is supported
-            // See here: https://docs.nuget.org/ndocs/schema/target-frameworks
-            string result = targetFrameworks
-                .Select(tfm => new PriorityFramework { Priority = getTfmPriority(tfm), Framework = tfm })
-                .Where(pfm => pfm.Priority != int.MaxValue)
-                .ToArray() // Ensure we don't search for priorities again when sorting
-                .OrderBy(pfm => pfm.Priority)
-                .Select(pfm => pfm.Framework)
-                .FirstOrDefault();
-
-            LogVerbose("Selecting {0} as the best target framework for current settings", result ?? "(null)");
-            return result;
+            LogVerbose("Selecting {0} as the best target framework for current settings", bestFramework ?? "(null)");
+            return bestFramework;
         }
 
         /// <summary>
