@@ -1,6 +1,7 @@
 ﻿namespace NugetForUnity
 {
     using System.Collections.Generic;
+    using UnityEditor;
 
     /// <summary>
     /// Defines a supported Platform for NuGet packages
@@ -9,19 +10,19 @@
     /// </summary>
     public class NugetPackageSupportedPlatform
     {
-        public string Name { get; set; }
+        public BuildTargetGroup Platform;
 
         public List<string> LibraryNames { get; set; }
 
-        public NugetPackageSupportedPlatform(string name)
+        public NugetPackageSupportedPlatform(BuildTargetGroup platform)
         {
-            Name = name;
+            Platform = platform;
             LibraryNames = new List<string>();
         }
 
-        public NugetPackageSupportedPlatform(string name, List<string> libraryNames)
+        public NugetPackageSupportedPlatform(BuildTargetGroup platform, List<string> libraryNames)
         {
-            Name = name;
+            Platform = platform;
             LibraryNames = libraryNames;
         }
     }

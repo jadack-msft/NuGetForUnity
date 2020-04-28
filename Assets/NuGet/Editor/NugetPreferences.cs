@@ -195,7 +195,7 @@
             }
 
             {
-                EditorGUILayout.LabelField("Supported Platforms:");
+                EditorGUILayout.LabelField("Supported Libs:");
 
                 foreach (var platform in NugetHelper.NugetConfigFile.SupportedPlatforms)
                 {
@@ -205,12 +205,25 @@
                         {
                             EditorGUILayout.BeginVertical();
                             {
-                                string name = EditorGUILayout.TextField(platform.Name);
-                                if (name != platform.Name)
+                                BuildTargetGroup buildTarget = BuildTargetGroup.Standalone;
+
+                                EditorGUILayout.BeginHorizontal();
                                 {
-                                    preferencesChangedThisFrame = true;
-                                    platform.Name = name;
+                                    buildTarget = (BuildTargetGroup)EditorGUILayout.EnumPopup(platform.Platform);
+                                    if (buildTarget != platform.Platform)
+                                    {
+                                        preferencesChangedThisFrame = true;
+                                        platform.Platform = buildTarget;
+                                    }
+
+                                    if (GUILayout.Button("Remove"))
+                                    {
+                                        NugetHelper.NugetConfigFile.SupportedPlatforms.Remove(platform);
+                                        preferencesChangedThisFrame = true;
+                                        break;
+                                    }
                                 }
+                                EditorGUILayout.EndHorizontal();
 
                                 EditorGUI.indentLevel++;
 
@@ -220,7 +233,7 @@
 
                                     EditorGUILayout.BeginHorizontal();
                                     {
-                                        name = EditorGUILayout.TextField(libName);
+                                        string name = EditorGUILayout.TextField(libName);
                                         if (name != libName)
                                         {
                                             preferencesChangedThisFrame = true;
@@ -267,7 +280,7 @@
 
                 if (GUILayout.Button(string.Format("Add New Platform")))
                 {
-                    NugetHelper.NugetConfigFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("New Platform"));
+                    NugetHelper.NugetConfigFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform(BuildTargetGroup.Standalone));
                     preferencesChangedThisFrame = true;
                 }
             }

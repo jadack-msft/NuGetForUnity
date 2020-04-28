@@ -162,7 +162,7 @@
                 foreach(var supportedPlatform in SupportedPlatforms)
                 {
                     platform = new XElement("platform");
-                    platform.Add(new XAttribute("name", supportedPlatform.Name));
+                    platform.Add(new XAttribute("name", supportedPlatform.Platform.ToString()));
 
                     foreach (var library in supportedPlatform.LibraryNames)
                     {
@@ -351,7 +351,9 @@
                         nugetLibs.Add(libName);
                     }
 
-                    configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform(platformName, nugetLibs));
+                    BuildTargetGroup buildTarget = (BuildTargetGroup)Enum.Parse(typeof(BuildTargetGroup), platformName);
+                    
+                    configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform(buildTarget, nugetLibs));
                 }
             }
 
@@ -427,21 +429,11 @@
 
                 // Standalone
                 List<string> validStandaloneLibraries = GetBestStandaloneFrameworks();
-                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("Standalone", validStandaloneLibraries));
+                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform(BuildTargetGroup.Standalone, validStandaloneLibraries));
 
                 // WSA
-                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("WSA", new List<string>()
+                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform(BuildTargetGroup.WSA, new List<string>()
                 { "uap10.0" }
-                ));
-
-                // Android
-                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("Android", new List<string>()
-                { "android" }
-                ));
-
-                // iOS
-                configFile.SupportedPlatforms.Add(new NugetPackageSupportedPlatform("iOS", new List<string>()
-                { "ios" }
                 ));
             }
         }

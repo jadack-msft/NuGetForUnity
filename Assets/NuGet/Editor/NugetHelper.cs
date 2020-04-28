@@ -373,9 +373,88 @@
             // For now, delete src.  We may use it later...
             DeleteDirectory(packageInstallDirectory + "/src");
 
-            // Since we don't automatically fix up the runtime dll platforms, remove them until we improve support
-            // for this newer feature of nuget packages.
-            DeleteDirectory(Path.Combine(packageInstallDirectory, "runtimes"));
+            // Import any runtime dlls
+            if (Directory.Exists(packageInstallDirectory + "/runtimes"))
+            {
+                List<string> selectedDirectories = new List<string>();
+
+                IEnumerable<string> runtimeDirectories = Directory.GetDirectories(packageInstallDirectory + "/runtimes").Select(s => new DirectoryInfo(s)).Select(x => x.FullName.ToLower());
+
+                // Make sure to import the library we want to set for the editor last
+                // Otherwise, everything else will hit a conflict upon importing
+                string[] validDirectories = { "win-x64/nativeassets/uap", "win-x86/native", "win-x86/nativeassets/uap", "win10-arm/nativeassets/uap", "win10-arm64/nativeassets/uap", "win-x64/native" };
+                BuildTarget[] buildTargets = { BuildTarget.WSAPlayer, BuildTarget.StandaloneWindows, BuildTarget.WSAPlayer, BuildTarget.WSAPlayer, BuildTarget.WSAPlayer, BuildTarget.StandaloneWindows64 };
+                string[] properties = { "CPU/X64", "", "CPU/X86", "CPU/ARM", "CPU/ARM64", "" };
+
+                string runtimesRoot = Path.Combine(packageInstallDirectory, "runtimes");
+
+                for(int i = 0; i < validDirectories.Length; i++)
+                {
+                    string directory = validDirectories[i];
+                    string directoryPath = Path.Combine(runtimesRoot, directory);
+                    if (Directory.Exists(directoryPath))
+                    {
+                        selectedDirectories.Add(directoryPath);
+
+                        string[] dlls = Directory.GetFiles(directoryPath, "*.dll", SearchOption.AllDirectories);
+
+                        foreach (string dll in dlls)
+                        {
+                            // Get the relative dll path for getting the AssetImporter
+                            DirectoryInfo rootFolder = Directory.GetParent(Application.dataPath);
+                            string dllPath = dll.Substring(rootFolder.FullName.Length + 1);
+
+                            LogVerbose($"Found dll at path {dllPath}");
+
+                            AssetDatabase.ImportAsset(dllPath);
+                            PluginImporter dllImporter = (PluginImporter)AssetImporter.GetAtPath(dllPath);
+
+                            if (dllImporter != null)
+                            {
+                                BuildTarget target = buildTargets[i];
+
+                                dllImporter.SetCompatibleWithAnyPlatform(false);
+                                dllImporter.SetCompatibleWithPlatform(target, true);
+
+                                if(target == BuildTarget.StandaloneWindows64)
+                                {
+                                    dllImporter.SetCompatibleWithEditor(true);
+                                }
+
+                                if(!string.IsNullOrEmpty(properties[i]))
+                                {
+                                    string key = properties[i].Split('/')[0];
+                                    string value = properties[i].Split('/')[1];
+
+                                    dllImporter.SetPlatformData(target, key, value);
+                                }
+
+                                dllImporter.SaveAndReimport();
+                            }
+                        }
+                    }
+                }
+
+                foreach (string directory in selectedDirectories)
+                {
+                    LogVerbose("Using {0}", directory);
+                }
+
+                string[] ValidBaseDirectories = { "win-x64", "win-x86", "win10-arm" };
+
+                // delete all of the libaries except for the selected one
+                foreach (string directory in runtimeDirectories)
+                {
+                    bool validDirectory = ValidBaseDirectories
+                        .Where(d => directory.Contains(d))
+                        .Any();
+
+                    if (!validDirectory)
+                    {
+                        DeleteDirectory(directory);
+                    }
+                }
+            }
 
             // Delete documentation folders since they sometimes have HTML docs with JavaScript, which Unity tried to parse as "UnityScript"
             DeleteDirectory(packageInstallDirectory + "/docs");
@@ -431,16 +510,14 @@
 
                             LogVerbose($"Found dll at path {dllPath}");
 
-                            AssetDatabase.ImportAsset(dllPath, ImportAssetOptions.Default);
+                            AssetDatabase.ImportAsset(dllPath);
                             var dllImporter = AssetImporter.GetAtPath(dllPath);
 
                             if (dllImporter != null)
                             {
                                 BuildTarget target = BuildTarget.NoTarget;
 
-                                BuildTargetGroup platformTarget = (BuildTargetGroup)Enum.Parse(typeof(BuildTargetGroup), platform.Name);
-
-                                switch (platformTarget)
+                                switch (platform.Platform)
                                 {
                                     case BuildTargetGroup.WSA:
                                         target = BuildTarget.WSAPlayer;
@@ -457,6 +534,7 @@
                                 {
                                     (dllImporter as PluginImporter).SetCompatibleWithAnyPlatform(false);
                                     (dllImporter as PluginImporter).SetCompatibleWithPlatform(target, true);
+                                    dllImporter.SaveAndReimport();
                                 }
                             }
                         }
@@ -667,11 +745,9 @@
 
         public static NugetPackageSupportedPlatform GetCurrentPlatformSupport()
         {
-            string currentPlatform = EditorUserBuildSettings.selectedBuildTargetGroup.ToString();
-
             if (NugetConfigFile.SupportedPlatforms != null)
             {
-                return NugetConfigFile.SupportedPlatforms.Where(platform => platform.Name == currentPlatform).FirstOrDefault();
+                return NugetConfigFile.SupportedPlatforms.Where(platform => platform.Platform == EditorUserBuildSettings.selectedBuildTargetGroup).FirstOrDefault();
             }
 
             return null;
