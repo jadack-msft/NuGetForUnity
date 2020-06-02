@@ -779,6 +779,12 @@
                 }
             }
 
+            if (string.IsNullOrEmpty(bestFramework))
+            {
+                // Default to an empty string for default framework
+                bestFramework = string.Empty;
+            }
+
             LogVerbose("Selecting {0} as the best target framework for current settings", bestFramework ?? "(null)");
             return bestFramework;
         }
