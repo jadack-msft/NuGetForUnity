@@ -2,6 +2,8 @@
 using NugetForUnity;
 using System.IO;
 using UnityEditor;
+using System;
+using System.Reflection;
 
 public class NuGetTests
 {
@@ -17,26 +19,58 @@ public class NuGetTests
         NugetHelper.LoadNugetConfigFile();
     }
 
+    private void InstallIdentifier(NugetPackageIdentifier package)
+    {
+        Type type = typeof(NugetHelper);
+        MethodInfo info = type.GetMethod(
+            "InstallIdentifier",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        info.Invoke(null, new object[] { package, false });
+    }
+
+    private bool IsInstalled(NugetPackageIdentifier package)
+    {
+        Type type = typeof(NugetHelper);
+        MethodInfo info = type.GetMethod(
+            "IsInstalled",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        object isInstalled = info.Invoke(null, new object[] { package });
+
+        return (bool)isInstalled;
+    }
+
+    private void UninstallAll()
+    {
+        Type type = typeof(NugetHelper);
+        MethodInfo info = type.GetMethod(
+            "UninstallAll",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        info.Invoke(null, null);
+    }
+
     [Test]
     public void InstallJsonTest()
     {
         // install a specific version
         var json608 = new NugetPackageIdentifier("Newtonsoft.Json", "6.0.8");
-        NugetHelper.InstallIdentifier(json608);
-        Assert.IsTrue(NugetHelper.IsInstalled(json608), "The package was NOT installed: {0} {1}", json608.Id, json608.Version);
+        InstallIdentifier(json608);
+        Assert.IsTrue(IsInstalled(json608), "The package was NOT installed: {0} {1}", json608.Id, json608.Version);
 
         // install a newer version
         var json701 = new NugetPackageIdentifier("Newtonsoft.Json", "7.0.1");
-        NugetHelper.InstallIdentifier(json701);
-        Assert.IsTrue(NugetHelper.IsInstalled(json701), "The package was NOT installed: {0} {1}", json701.Id, json701.Version);
+        InstallIdentifier(json701);
+        Assert.IsTrue(IsInstalled(json701), "The package was NOT installed: {0} {1}", json701.Id, json701.Version);
 
         // try to install an old version while a newer is already installed
-        NugetHelper.InstallIdentifier(json608);
-        Assert.IsTrue(NugetHelper.IsInstalled(json701), "The package was NOT installed: {0} {1}", json701.Id, json701.Version);
+        InstallIdentifier(json608);
+        Assert.IsTrue(IsInstalled(json701), "The package was NOT installed: {0} {1}", json701.Id, json701.Version);
 
-        NugetHelper.UninstallAll();
-        Assert.IsFalse(NugetHelper.IsInstalled(json608), "The package is STILL installed: {0} {1}", json608.Id, json608.Version);
-        Assert.IsFalse(NugetHelper.IsInstalled(json701), "The package is STILL installed: {0} {1}", json701.Id, json701.Version);
+        UninstallAll();
+        Assert.IsFalse(IsInstalled(json608), "The package is STILL installed: {0} {1}", json608.Id, json608.Version);
+        Assert.IsFalse(IsInstalled(json701), "The package is STILL installed: {0} {1}", json701.Id, json701.Version);
     }
 
     [Test]
@@ -45,12 +79,12 @@ public class NuGetTests
         var protobuf = new NugetPackageIdentifier("protobuf-net", "2.0.0.668");
 
         // install the package
-        NugetHelper.InstallIdentifier(protobuf);
-        Assert.IsTrue(NugetHelper.IsInstalled(protobuf), "The package was NOT installed: {0} {1}", protobuf.Id, protobuf.Version);
+        InstallIdentifier(protobuf);
+        Assert.IsTrue(IsInstalled(protobuf), "The package was NOT installed: {0} {1}", protobuf.Id, protobuf.Version);
 
         // uninstall the package
-        NugetHelper.UninstallAll();
-        Assert.IsFalse(NugetHelper.IsInstalled(protobuf), "The package is STILL installed: {0} {1}", protobuf.Id, protobuf.Version);
+        UninstallAll();
+        Assert.IsFalse(IsInstalled(protobuf), "The package is STILL installed: {0} {1}", protobuf.Id, protobuf.Version);
     }
 
     [Test]
@@ -61,33 +95,33 @@ public class NuGetTests
 
         var bootstrap337 = new NugetPackageIdentifier("bootstrap", "3.3.7");
 
-        NugetHelper.InstallIdentifier(bootstrap337);
-        Assert.IsTrue(NugetHelper.IsInstalled(bootstrap337), "The package was NOT installed: {0} {1}", bootstrap337.Id, bootstrap337.Version);
+        InstallIdentifier(bootstrap337);
+        Assert.IsTrue(IsInstalled(bootstrap337), "The package was NOT installed: {0} {1}", bootstrap337.Id, bootstrap337.Version);
 
         // Bootstrap CSS 3.3.7 has a dependency on jQuery [1.9.1, 4.0.0) ... 1.9.1 <= x < 4.0.0
         // Therefore it should install 1.9.1 since that is the lowest compatible version available
         var jQuery191 = new NugetPackageIdentifier("jQuery", "1.9.1");
-        Assert.IsTrue(NugetHelper.IsInstalled(jQuery191), "The package was NOT installed: {0} {1}", jQuery191.Id, jQuery191.Version);
+        Assert.IsTrue(IsInstalled(jQuery191), "The package was NOT installed: {0} {1}", jQuery191.Id, jQuery191.Version);
 
         // now upgrade jQuery to 3.1.1
         var jQuery311 = new NugetPackageIdentifier("jQuery", "3.1.1");
-        NugetHelper.InstallIdentifier(jQuery311);
-        Assert.IsTrue(NugetHelper.IsInstalled(jQuery311), "The package was NOT installed: {0} {1}", jQuery311.Id, jQuery311.Version);
+        InstallIdentifier(jQuery311);
+        Assert.IsTrue(IsInstalled(jQuery311), "The package was NOT installed: {0} {1}", jQuery311.Id, jQuery311.Version);
 
         // reinstall bootstrap, which should use the currently installed jQuery 3.1.1
         NugetHelper.Uninstall(bootstrap337, false);
-        NugetHelper.InstallIdentifier(bootstrap337);
+        InstallIdentifier(bootstrap337);
 
-        Assert.IsFalse(NugetHelper.IsInstalled(jQuery191), "The package IS installed: {0} {1}", jQuery191.Id, jQuery191.Version);
-        Assert.IsTrue(NugetHelper.IsInstalled(jQuery311), "The package was NOT installed: {0} {1}", jQuery311.Id, jQuery311.Version);
+        Assert.IsFalse(IsInstalled(jQuery191), "The package IS installed: {0} {1}", jQuery191.Id, jQuery191.Version);
+        Assert.IsTrue(IsInstalled(jQuery311), "The package was NOT installed: {0} {1}", jQuery311.Id, jQuery311.Version);
 
         // cleanup and uninstall everything
-        NugetHelper.UninstallAll();
+        UninstallAll();
 
         // confirm they are uninstalled
-        Assert.IsFalse(NugetHelper.IsInstalled(bootstrap337), "The package is STILL installed: {0} {1}", bootstrap337.Id, bootstrap337.Version);
-        Assert.IsFalse(NugetHelper.IsInstalled(jQuery191), "The package is STILL installed: {0} {1}", jQuery191.Id, jQuery191.Version);
-        Assert.IsFalse(NugetHelper.IsInstalled(jQuery311), "The package is STILL installed: {0} {1}", jQuery311.Id, jQuery311.Version);
+        Assert.IsFalse(IsInstalled(bootstrap337), "The package is STILL installed: {0} {1}", bootstrap337.Id, bootstrap337.Version);
+        Assert.IsFalse(IsInstalled(jQuery191), "The package is STILL installed: {0} {1}", jQuery191.Id, jQuery191.Version);
+        Assert.IsFalse(IsInstalled(jQuery311), "The package is STILL installed: {0} {1}", jQuery311.Id, jQuery311.Version);
 
         // turn cache back on
         NugetHelper.NugetConfigFile.InstallFromCache = true;
@@ -99,18 +133,18 @@ public class NuGetTests
         var styleCopPlusId = new NugetPackageIdentifier("StyleCopPlus.MSBuild", "4.7.49.5");
         var styleCopId = new NugetPackageIdentifier("StyleCop.MSBuild", "4.7.49.0");
 
-        NugetHelper.InstallIdentifier(styleCopPlusId);
+        InstallIdentifier(styleCopPlusId);
 
         // StyleCopPlus depends on StyleCop, so they should both be installed
         // it depends on version 4.7.49.0, so ensure it is also installed
-        Assert.IsTrue(NugetHelper.IsInstalled(styleCopPlusId), "The package was NOT installed: {0} {1}", styleCopPlusId.Id, styleCopPlusId.Version);
-        Assert.IsTrue(NugetHelper.IsInstalled(styleCopId), "The package was NOT installed: {0} {1}", styleCopId.Id, styleCopId.Version);
+        Assert.IsTrue(IsInstalled(styleCopPlusId), "The package was NOT installed: {0} {1}", styleCopPlusId.Id, styleCopPlusId.Version);
+        Assert.IsTrue(IsInstalled(styleCopId), "The package was NOT installed: {0} {1}", styleCopId.Id, styleCopId.Version);
 
         // cleanup and uninstall everything
-        NugetHelper.UninstallAll();
+        UninstallAll();
 
-        Assert.IsFalse(NugetHelper.IsInstalled(styleCopPlusId), "The package is STILL installed: {0} {1}", styleCopPlusId.Id, styleCopPlusId.Version);
-        Assert.IsFalse(NugetHelper.IsInstalled(styleCopId), "The package is STILL installed: {0} {1}", styleCopId.Id, styleCopId.Version);
+        Assert.IsFalse(IsInstalled(styleCopPlusId), "The package is STILL installed: {0} {1}", styleCopPlusId.Id, styleCopPlusId.Version);
+        Assert.IsFalse(IsInstalled(styleCopId), "The package is STILL installed: {0} {1}", styleCopId.Id, styleCopId.Version);
     }
 
     [Test]
@@ -118,8 +152,8 @@ public class NuGetTests
     {
         var signalRClient = new NugetPackageIdentifier("Microsoft.AspNet.SignalR.Client", "2.2.2");
 
-        NugetHelper.InstallIdentifier(signalRClient);
-        Assert.IsTrue(NugetHelper.IsInstalled(signalRClient), "The package was NOT installed: {0} {1}", signalRClient.Id, signalRClient.Version);
+        InstallIdentifier(signalRClient);
+        Assert.IsTrue(IsInstalled(signalRClient), "The package was NOT installed: {0} {1}", signalRClient.Id, signalRClient.Version);
 
         var directory45 = Path.Combine(NugetHelper.NugetConfigFile.RepositoryPath, string.Format("{0}.{1}\\lib\\net45", signalRClient.Id, signalRClient.Version));
 
@@ -134,8 +168,8 @@ public class NuGetTests
         }
 
         // cleanup and uninstall everything
-        NugetHelper.UninstallAll();
-        Assert.IsFalse(NugetHelper.IsInstalled(signalRClient), "The package is STILL installed: {0} {1}", signalRClient.Id, signalRClient.Version);
+        UninstallAll();
+        Assert.IsFalse(IsInstalled(signalRClient), "The package is STILL installed: {0} {1}", signalRClient.Id, signalRClient.Version);
     }
 
     [Test]

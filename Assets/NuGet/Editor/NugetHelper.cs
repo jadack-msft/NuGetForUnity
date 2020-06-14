@@ -1,11 +1,11 @@
 ﻿namespace NugetForUnity
 {
-    using Ionic.Zip;
     using System;
     using System.Collections;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
+    using System.IO.Compression;
     using System.Linq;
     using System.Net;
     using System.Security.Cryptography;
@@ -479,20 +479,24 @@
 
                     if (bestTargetFramework != null)
                     {
-                        DirectoryInfo bestLibDirectory = libDirectories
-                            .First(x => x.Name.ToLower() == bestTargetFramework);
+                        IEnumerable<DirectoryInfo> matches = libDirectories.Where(x => x.Name.ToLower() == bestTargetFramework);
 
-                        if (bestTargetFramework == "unity" ||
-                            bestTargetFramework == "net35-unity full v3.5" ||
-                            bestTargetFramework == "net35-unity subset v3.5")
+                        if (matches.Count() > 0)
                         {
-                            newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "unity"));
-                            newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "net35-unity full v3.5"));
-                            newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "net35-unity subset v3.5"));
-                        }
-                        else
-                        {
-                            newDirectories.Add(bestLibDirectory.FullName);
+                            DirectoryInfo bestLibDirectory = matches.First();
+
+                            if (bestTargetFramework == "unity" ||
+                                bestTargetFramework == "net35-unity full v3.5" ||
+                                bestTargetFramework == "net35-unity subset v3.5")
+                            {
+                                newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "unity"));
+                                newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "net35-unity full v3.5"));
+                                newDirectories.Add(Path.Combine(bestLibDirectory.Parent.FullName, "net35-unity subset v3.5"));
+                            }
+                            else
+                            {
+                                newDirectories.Add(bestLibDirectory.FullName);
+                            }
                         }
                     }
 
@@ -1436,14 +1440,16 @@
                     string baseDirectory = Path.Combine(NugetConfigFile.RepositoryPath, string.Format("{0}.{1}", package.Id, package.Version));
 
                     // unzip the package
-                    using (ZipFile zip = ZipFile.Read(cachedPackagePath))
+                    using(ZipStorer zip = ZipStorer.Open(cachedPackagePath, FileAccess.Read))
                     {
-                        foreach (ZipEntry entry in zip)
+                        List<ZipStorer.ZipFileEntry> dir = zip.ReadCentralDir();
+                        foreach (ZipStorer.ZipFileEntry entry in dir)
                         {
-                            entry.Extract(baseDirectory, ExtractExistingFileAction.OverwriteSilently);
+                            string extractPath = Path.Combine(baseDirectory, entry.FilenameInZip);
+                            zip.ExtractFile(entry, extractPath);
                             if (NugetConfigFile.ReadOnlyPackageFiles)
                             {
-                                FileInfo extractedFile = new FileInfo(Path.Combine(baseDirectory, entry.FileName));
+                                FileInfo extractedFile = new FileInfo(extractPath);
                                 extractedFile.Attributes |= FileAttributes.ReadOnly;
                             }
                         }
@@ -1827,14 +1833,15 @@
                     }
 
                     // Unzip the bundle and extract any credential provider exes
-                    using (ZipFile zip = ZipFile.Read(tempFileName))
+                    using(ZipStorer zip = ZipStorer.Open(tempFileName, FileAccess.Read))
                     {
-                        foreach (ZipEntry entry in zip)
+                        List<ZipStorer.ZipFileEntry> dir = zip.ReadCentralDir();
+                        foreach(ZipStorer.ZipFileEntry entry in dir)
                         {
-                            if (Regex.IsMatch(entry.FileName, @"^credentialprovider.+\.exe$", RegexOptions.IgnoreCase))
+                            if (Regex.IsMatch(entry.FilenameInZip, @"^credentialprovider.+\.exe$", RegexOptions.IgnoreCase))
                             {
-                                LogVerbose("Extracting {0} to {1}", entry.FileName, providerDestination);
-                                entry.Extract(providerDestination, ExtractExistingFileAction.OverwriteSilently);
+                                LogVerbose("Extracting {0} to {1}", entry.FilenameInZip, providerDestination);
+                                zip.ExtractFile(entry, Path.Combine(providerDestination, entry.FilenameInZip));
                             }
                         }
                     }

@@ -2,10 +2,10 @@
 {
     using System.Collections.Generic;
     using System.IO;
+    using System.IO.Compression;
     using System.Linq;
     using System.Xml;
     using System.Xml.Linq;
-    using Ionic.Zip;
 
     /// <summary>
     /// Represents a .nuspec file used to store metadata for a NuGet package.
@@ -136,14 +136,13 @@
             if (File.Exists(nupkgFilepath))
             {
                 // get the .nuspec file from inside the .nupkg
-                using (ZipFile zip = ZipFile.Read(nupkgFilepath))
+                using (ZipStorer zip = ZipStorer.Open(nupkgFilepath, FileAccess.Read))
                 {
-                    //var entry = zip[string.Format("{0}.nuspec", packageId)];
-                    var entry = zip.First(x => x.FileName.EndsWith(".nuspec"));
+                    var entry = zip.ReadCentralDir().First(x => x.FilenameInZip.EndsWith(".nuspec"));
 
                     using (MemoryStream stream = new MemoryStream())
                     {
-                        entry.Extract(stream);
+                        zip.ExtractFile(entry, stream);
                         stream.Position = 0;
 
                         nuspec = Load(stream);
